@@ -2,6 +2,8 @@ import { FastifyReply, FastifyRequest } from 'fastify';
 import { prisma } from '../lib/prisma';
 import { hashPassword, comparePassword } from '../utils/hash';
 import { z } from 'zod';
+import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'crypto';
 
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   const registerBodySchema = z.object({
@@ -93,6 +95,81 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
     .send({
       token,
     });
+}
+
+export async function googleAuthRedirect(request: FastifyRequest, reply: FastifyReply) {
+  const app = request.server as FastifyInstance & { googleOAuth2?: any };
+  if (!app.googleOAuth2) {
+    return reply.status(500).send({ message: 'OAuth plugin not configured.' });
+  }
+  const url = await app.googleOAuth2.generateAuthorizationUri(request, reply);
+  return reply.redirect(url);
+}
+
+export async function googleAuthCallback(request: FastifyRequest, reply: FastifyReply) {
+  const app = request.server as FastifyInstance & { googleOAuth2?: any };
+  if (!app.googleOAuth2) {
+    return reply.status(500).send({ message: 'OAuth plugin not configured.' });
+  }
+  const tokenResponse = await app.googleOAuth2.getAccessTokenFromAuthorizationCodeFlow(request);
+  const accessToken = tokenResponse?.token?.access_token as string | undefined;
+  const idToken = tokenResponse?.token?.id_token as string | undefined;
+  let email: string | undefined;
+  let name: string | undefined;
+  if (accessToken) {
+    const res = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (res.ok) {
+      const data: any = await res.json();
+      email = data?.email as string | undefined;
+      name = data?.name as string | undefined;
+    }
+  }
+  if (!email && idToken) {
+    try {
+      const [, payloadB64] = idToken.split('.');
+      const payloadJson = Buffer.from(payloadB64, 'base64').toString('utf-8');
+      const payload = JSON.parse(payloadJson);
+      email = payload.email;
+      name = payload.name;
+    } catch {}
+  }
+  if (!email) {
+    return reply.status(400).send({ message: 'Email not available from provider.' });
+  }
+  let user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    const password_hash = await hashPassword(randomUUID());
+    user = await prisma.user.create({ data: { email, name: name || '', password: password_hash } });
+  }
+  const token = await reply.jwtSign({}, { sign: { sub: user.id } });
+  const refreshToken = await reply.jwtSign({}, { sign: { sub: user.id, expiresIn: '7d' } });
+  await prisma.refreshToken.create({
+    data: {
+      token: refreshToken,
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    }
+  });
+  reply.setCookie('refreshToken', refreshToken, {
+    path: '/',
+    secure: false,
+    sameSite: true,
+    httpOnly: true,
+  });
+  reply.setCookie('oauth_state', '', {
+    path: '/',
+    secure: false,
+    sameSite: true,
+    httpOnly: true,
+    maxAge: 0,
+  });
+  const successRedirect = process.env.OAUTH_SUCCESS_REDIRECT_URL;
+  if (successRedirect) {
+    return reply.redirect(`${successRedirect}?token=${encodeURIComponent(token)}`);
+  }
+  return reply.status(200).send({ token });
 }
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {
