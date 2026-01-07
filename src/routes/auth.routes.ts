@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { register, login, refresh, me, googleAuthRedirect, googleAuthCallback } from '../controllers/auth.controller';
+import { verifyJwt } from '../middlewares/verify-jwt';
 
 export async function authRoutes(app: FastifyInstance) {
   app.post('/register', register);
@@ -7,5 +8,5 @@ export async function authRoutes(app: FastifyInstance) {
   app.get('/auth/google', googleAuthRedirect);
   app.get('/auth/google/callback', googleAuthCallback);
   app.patch('/token/refresh', refresh);
-  app.get('/me', me);
+  app.get('/me', { onRequest: [verifyJwt] }, me);
 }

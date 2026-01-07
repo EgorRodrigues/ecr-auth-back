@@ -235,8 +235,6 @@ export async function refresh(request: FastifyRequest, reply: FastifyReply) {
 }
 
 export async function me(request: FastifyRequest, reply: FastifyReply) {
-    await request.jwtVerify();
-
     const user = await prisma.user.findUnique({
         where: { id: request.user.sub },
         select: {
