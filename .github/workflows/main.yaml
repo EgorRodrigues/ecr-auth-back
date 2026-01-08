@@ -1,0 +1,63 @@
+name: Deploy to Cloud Run - production
+
+on:
+  push:
+    branches:
+      - main
+env:
+  REGION: us-central1
+  PROJECT_ID: spry-metric-460820-i8
+  SERVICE_NAME: ecr-auth-back
+  DATABASE_HOST: /cloudsql/spry-metric-460820-i8:us-central1:ecr-financy-back
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Google Auth
+        id: auth
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GCP_CREDENTIALS }}"
+
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v2"
+        with:
+          install_components: "beta"
+      
+      - name: Build and Push Container
+        run: |-
+          gcloud auth configure-docker
+          docker build -t "gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}" .
+          docker push "gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Google Auth
+        id: auth
+        uses: "google-github-actions/auth@v2"
+        with:
+          credentials_json: "${{ secrets.GCP_CREDENTIALS }}"
+
+      - name: "Set up Cloud SDK"
+        uses: "google-github-actions/setup-gcloud@v2"
+        with:
+          install_components: "beta"
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.REGION }}
+          image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          flags: '--allow-unauthenticated --port 8000 --service-account cloud-run-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com'
+
+          env_vars: |-
+            DATABASE_URL=postgresql://postgres:postgres@${{ env.DATABASE_HOST }}:5432/ecr_auth?schema=public
