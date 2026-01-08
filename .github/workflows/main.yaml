@@ -57,7 +57,7 @@ jobs:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
           image: gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
-          flags: '--allow-unauthenticated --port 8000 --service-account cloud-run-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com'
+          flags: '--allow-unauthenticated --port 8080 --service-account cloud-run-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com'
 
           env_vars: |-
             DATABASE_URL=postgresql://postgres:postgres@${{ env.DATABASE_HOST }}:5432/ecr_auth?schema=public
