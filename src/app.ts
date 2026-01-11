@@ -46,16 +46,13 @@ app.addHook('onResponse', async (request, reply) => {
 app.register(fastifyCors, {
   origin: true, // Permitir todas as origens (ajuste conforme necessário para produção)
   credentials: true, // Permitir envio de cookies
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 });
 
 app.register(fastifyJwt, {
   secret: process.env.JWT_SECRET || 'secret',
-  cookie: {
-    cookieName: 'refreshToken',
-    signed: false,
-  },
   sign: {
-    expiresIn: '10m',
+    expiresIn: '1m',
   },
 });
 

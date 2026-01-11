@@ -85,15 +85,10 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
   });
 
   return reply
-    .setCookie('refreshToken', refreshToken, {
-      path: '/',
-      secure: false, // TODO: Mudar para true em prod (HTTPS)
-      sameSite: true,
-      httpOnly: true,
-    })
     .status(200)
     .send({
       token,
+      refreshToken,
     });
 }
 
@@ -152,34 +147,26 @@ export async function googleAuthCallback(request: FastifyRequest, reply: Fastify
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     }
   });
-  reply.setCookie('refreshToken', refreshToken, {
-    path: '/',
-    secure: false,
-    sameSite: true,
-    httpOnly: true,
-  });
-  reply.setCookie('oauth_state', '', {
-    path: '/',
-    secure: false,
-    sameSite: true,
-    httpOnly: true,
-    maxAge: 0,
-  });
   const successRedirect = process.env.OAUTH_SUCCESS_REDIRECT_URL;
   if (successRedirect) {
-    return reply.redirect(`${successRedirect}?token=${encodeURIComponent(token)}`);
+    return reply.redirect(`${successRedirect}?token=${encodeURIComponent(token)}&refreshToken=${encodeURIComponent(refreshToken)}`);
   }
-  return reply.status(200).send({ token });
+  return reply.status(200).send({ token, refreshToken });
 }
 
 export async function refresh(request: FastifyRequest, reply: FastifyReply) {
-  await request.jwtVerify({ onlyCookie: true });
+  const refreshBodySchema = z.object({
+    refreshToken: z.string(),
+  });
 
-  const { sub } = request.user;
-  const refreshToken = request.cookies.refreshToken;
+  const { refreshToken } = refreshBodySchema.parse(request.body);
 
-  if (!refreshToken) {
-     return reply.status(401).send({ message: 'Unauthorized.' });
+  let sub: string;
+  try {
+    const decoded = request.server.jwt.verify<{ sub: string }>(refreshToken);
+    sub = decoded.sub;
+  } catch (err) {
+    return reply.status(401).send({ message: 'Invalid refresh token.' });
   }
   
   const storedToken = await prisma.refreshToken.findUnique({
@@ -222,15 +209,10 @@ export async function refresh(request: FastifyRequest, reply: FastifyReply) {
   });
 
   return reply
-    .setCookie('refreshToken', newRefreshToken, {
-      path: '/',
-      secure: false, // TODO: true em prod
-      sameSite: true,
-      httpOnly: true,
-    })
     .status(200)
     .send({
       token,
+      refreshToken: newRefreshToken,
     });
 }
 

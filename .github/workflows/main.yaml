@@ -60,4 +60,4 @@ jobs:
           flags: '--allow-unauthenticated --port 8080 --service-account cloud-run-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com'
 
           env_vars: |-
-            DATABASE_URL=postgresql://postgres:postgres@${{ env.DATABASE_HOST }}:5432/ecr_auth?schema=public
+            DATABASE_URL=postgresql://postgres:hX_y9cV6Oe%3DSGu%7Bm@localhost/ecr_auth?host=/cloudsql/spry-metric-460820-i8:us-central1:ecr-financy-back
